@@ -1,0 +1,97 @@
+---
+title: "Part-to-whole #30DaysChartChallenge"
+author: "Leire Olmeda"
+date: "1/4/2022"
+output: html_document
+---
+
+Datos obtenidos de la ejecución presupuestaria de las entidades locales del Ministerio de Hacienda  (https://serviciostelematicosext.hacienda.gob.es/SGFAL/CONPREL) 
+
+```{r datos, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(RODBC)
+library(dplyr)
+library(stringr)
+library(treemap)
+library(d3treeR)
+
+url <- "https://serviciostelematicosext.hacienda.gob.es/SGFAL/CONPREL/Consulta/DescargaFichero?CCAA=&TipoDato=Liquidaciones&Ejercicio=2020&TipoPublicacion=Access"
+
+download.file(url = url, destfile = 'data/Liquidaciones2020.zip', mode='wb')
+unzip(zipfile = 'data/Liquidaciones2020.zip', exdir = "./data")
+
+
+canal <- odbcConnectAccess("data/Liquidaciones2020.mdb") 
+sqlTables(canal) 
+
+sqlTables(canal, tableType = "VIEW")$TABLE_NAME 
+
+funcional <- sqlQuery(canal, "SELECT * FROM v_funcionalConsolidada")
+programas <- sqlQuery(canal, "SELECT * FROM tb_cuentasProgramas")
+
+funcional <- funcional %>% 
+  filter (cdfgr<= 99 & cdfgr>=10)
+
+
+
+programas <- programas %>%  
+  mutate(nombre = str_replace(nombre, 'Ã­', 'í')) %>% 
+  filter(cdfgr!= 1 |  nombre != "Deuda Pública                                                                                                                " )
+
+
+FuncionalTotal <- funcional %>% 
+  group_by(cdfgr) %>% 
+  summarise(Total = sum(importe)/1000000) 
+
+FuncionalTotal <- FuncionalTotal  %>% 
+  mutate(categoria = case_when(cdfgr == 11 ~ 0,  
+           TRUE ~ trunc(cdfgr / 10)))
+
+FuncionalTotal <- left_join(FuncionalTotal, programas, by = "cdfgr")
+FuncionalTotal <- left_join(FuncionalTotal, programas, by = c("categoria"= "cdfgr"))
+
+FuncionalTotal <- FuncionalTotal %>% 
+  mutate(Categoría = nombre.y,
+         Funcional = nombre.x) %>% 
+  select(Categoría, Funcional, Total) %>% 
+  mutate(Categoría = case_when(
+    Categoría == "PRODUCCIÓN DE BIENES PÚBLICOS DE CARÁCTER PREFERENTE                                                                         "  ~ "BIENES PÚBLICOS DE CARÁCTER PREFERENTE",
+    Categoría == "ACTUACIONES DE CARÁCTER ECONÓMICO                                                                                            "  ~ "ACT CARÁCTER ECONÓMICO",
+    Categoría == "ACTUACIONES DE PROTECCIÓN Y PROMOCIÓN SOCIAL                                                                                 " ~ "PROTECCIÓN Y PROMOCIÓN SOCIAL",
+    TRUE ~ Categoría) )
+
+
+```
+
+
+
+```{r grafico, include=FALSE}
+gráfico <- d3tree2( 
+  treemap(FuncionalTotal, index = c("Categoría", "Funcional"),
+          vSize = "Total",
+          vColor = "Total",
+          type= "value",
+          n=10,
+          fontsize.labels=c(20,15),
+          fontcolor.labels=c("white","white"), 
+          fontface.labels=c(2,1),
+          overlap.labels=0, 
+          inflate.labels=F,   
+          palette = "Reds",          
+          fontsize.title = 16,
+          title.legend = "Millones €"),
+  
+  rootname = "Destino de los recursos municipales",
+  celltext = "name")
+
+gráfico
+
+```
+
+```{r grafico2, echo=FALSE}
+
+
+gráfico
+
+```

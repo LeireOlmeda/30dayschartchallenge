@@ -1,0 +1,173 @@
+---
+title: "Correlatios #30DaysChartChallenge"
+author: "Leire Olmeda"
+date: "10/4/2022"
+output: html_document
+---
+
+Datos obtenidos de la ejecución presupuestaria de las entidades entidades locales del Ministerio de Hacienda  (https://serviciostelematicosext.hacienda.gob.es/SGFAL/CONPREL) 
+
+```{r datos, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(RODBC)
+library(dplyr)
+library(stringr)
+library(CGPfunctions)
+library(tidyr)
+library(ggplot2)
+library(data.table)
+library(plotly)
+library(ggcorrplot)
+
+
+
+url <- "https://serviciostelematicosext.hacienda.gob.es/SGFAL/CONPREL/Consulta/DescargaFichero?CCAA=&TipoDato=Liquidaciones&Ejercicio=2020&TipoPublicacion=Access"
+
+download.file(url = url, destfile = 'data/Liquidaciones2020.zip', mode='wb')
+unzip(zipfile = 'data/Liquidaciones2020.zip', exdir = "./data")
+
+canal <- odbcConnectAccess("data/Liquidaciones2020.mdb") 
+sqlTables(canal) 
+
+sqlTables(canal, tableType = "VIEW")$TABLE_NAME 
+sqlTables(canal)$TABLE_NAME 
+
+funcional <- sqlQuery(canal, "SELECT * FROM v_funcionalConsolidada")
+programas <- sqlQuery(canal, "SELECT * FROM tb_cuentasProgramas")
+economica <- sqlQuery(canal, "SELECT * FROM tb_cuentaseconomica")
+capitulos <- sqlQuery(canal, "SELECT * FROM v_economicaConsolidada")
+inventario <- sqlQuery(canal,"SELECT * FROM tb_inventario" )
+
+#funcional <- funcional %>% 
+#  filter (cdfgr<= 34 & cdfgr>=31)
+
+funcional <- funcional %>% 
+  filter (cdfgr<= 99 & cdfgr>=10 & poblacion > 0)
+
+
+#funcional$xhab <- funcional$importe / funcional$poblacion
+
+
+programas <- programas %>%  
+  mutate(nombre = str_replace(nombre, 'Ã­', 'í')) %>% 
+  filter(cdfgr!= 1 |  nombre != "Deuda Pública                                                                                                                " )
+
+
+#FuncionalTotal <- funcional %>% 
+#  group_by(cdfgr, CodBDGEL) %>% 
+#  summarise(xhabSocial = sum(xhab))
+
+
+FuncionalTotal <- funcional %>% 
+  group_by(CodBDGEL) %>% 
+ mutate(Total = sum(importe)) %>% 
+  group_by(CodBDGEL,cdfgr ) %>% 
+  summarise(porcentaje = round (100* sum(importe) / mean(Total),1)) %>% 
+  ungroup()
+
+
+
+FuncionalTotal <- left_join(FuncionalTotal, programas, by = "cdfgr")
+
+FuncionalTotal <- FuncionalTotal %>% 
+  mutate(nombre = case_when(
+  nombre == "Deporte                                                                                                                      "  ~ "Deporte",
+  nombre == "Cultura                                                                                                                      "  ~ "Cultura",
+  nombre == "Educación                                                                                                                    " ~ "Educación",
+  nombre == "Sanidad                                                                                                                      " ~ "Sanidad",
+  nombre == "Servicios de carácter general                                                                                                "  ~ "Servicios de carácter general",
+  nombre == "Otras actuaciones de carácter económico                                                                                      "  ~ "Otras actuaciones de carácter económico",
+  nombre == "Servicios Sociales y promoción social                                                                                        "  ~ "Servicios Sociales y promoción social",
+  nombre == "Medio ambiente                                                                                                               "  ~ "Medio ambiente", 
+  nombre == "Bienestar comunitario                                                                                                        "  ~ "Bienestar comunitario",
+  nombre == "Vivienda y urbanismo                                                                                                         "  ~ "Vivienda y urbanismo",
+  nombre == "Deuda Pública                                                                                                                "  ~ "Deuda Pública",  
+  nombre == "Transferencias a otras Administraciones Públicas                                                                             "  ~ "Transferencias a otras Administraciones Públicas",
+  nombre == "Órganos de gobierno                                                                                                          "  ~ "Órganos de gobierno",
+  nombre == " Infraestructuras                                                                                                            "  ~ "Infraestructuras",
+  nombre == "Transporte público                                                                                                           "  ~ "Transporte público",
+  nombre == "Comercio, turismo y pequeñas y medianas empresas                                                                             "  ~ "Comercio, turismo y pequeñas y medianas empresas",
+  nombre == "Fomento del Empleo                                                                                                           "  ~ "Fomento del Empleo",
+  nombre == "Seguridad y movilidad ciudadana                                                                                              "  ~ "Seguridad y movilidad ciudadana",
+  nombre == "Otras prestaciones económicas a favor de empleados                                                                           "  ~ "Otras prestaciones económicas a favor de empleados",
+  nombre == "Administración financiera y tributaria                                                                                       "  ~ "Administración financiera y tributaria",
+  nombre == "Investigación, desarrollo e innovación                                                                                       "  ~ "Investigación, desarrollo e innovación",
+  nombre == "Agricultura, Ganadería y Pesca                                                                                               "  ~ "Agricultura, Ganadería y Pesca",
+  nombre == "Pensiones                                                                                                                    "  ~ "Pensiones",
+  nombre == " Industria y energía                                                                                                         "  ~ "Industria y energía",
+    TRUE ~ nombre) ) %>% 
+  ungroup()
+
+
+
+
+FuncionalResumido <- FuncionalTotal %>%
+  select(nombre, porcentaje, CodBDGEL) %>% 
+  pivot_wider (names_from = "nombre", values_from = "porcentaje")
+
+
+
+capitulos$cdcta <- as.numeric(capitulos$cdcta)
+
+# personal <- capitulos %>% 
+#  filter (cdcta==10 & tipreig == "G")
+
+# personal$xhabPersonal <- personal$imported / personal$poblacion
+
+# personal <- personal %>% 
+#  select(xhabPersonal, poblacion, CodBDGEL)
+
+# FuncionalResumido <- left_join(FuncionalResumido, personal, by = "CodBDGEL")
+
+inventario <- inventario %>%  
+  mutate(nombreppal = str_replace(nombreppal, 'Ã­', 'í')) %>% 
+  mutate(CodBDGEL = codbdgel) %>% 
+  select(nombreppal, CodBDGEL) %>% 
+  distinct()
+
+Final <- left_join(FuncionalResumido, inventario, by = "CodBDGEL") %>% 
+  filter(str_detect(CodBDGEL, "AA"))
+
+Final3 <- Final %>% 
+  select(-nombreppal, -CodBDGEL)
+
+
+
+
+```
+
+
+```{r grafico, echo=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+datos = cor(Final3, use = "pairwise.complete.obs")
+datos.lista = melt(datos)
+names(datos.lista)=c("Ejecución1","Ejecución2","Correlacion")
+escala = seq(-1,1,0.1)
+
+p <- ggplot(datos.lista, aes(Ejecución1 , Ejecución2, fill=Correlacion,
+            text=paste0(Ejecución1, "\n", Ejecución2, " \nCorrelación:", round(Correlacion,2)) )) + 
+  geom_tile(aes(fill=Correlacion)) + 
+  scale_fill_gradient2(
+  low = "red",
+  mid = "white",
+  high = "blue",
+  midpoint = 0,
+  space = "Lab",
+  na.value = "grey50",
+  guide = "colourbar",
+  aesthetics = "fill"
+)+
+  labs(title = "Correlación Gastos Entidades Locales 2020") +
+  xlab ("")+
+  ylab ("")+
+  theme(plot.title = element_text(face = "bold", size = 14))+
+  theme(axis.text.x = element_text(angle = 45))
+
+  ggplotly(p, tooltip = "text",  width = 1000,
+  height = 1000)
+
+
+  
+```
