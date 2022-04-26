@@ -1,0 +1,115 @@
+---
+title: "Trends #30DaysChartChallenge"
+author: "Leire Olmeda"
+date: "25/4/2022"
+output: html_document
+---
+
+Datos de exposición a la contaminación del aire por material particulado - EUROSTAT  (https://ec.europa.eu/eurostat/databrowser/view/SDG_11_50/default/table?lang=en&category=qol.qol_env.qol_env_pol) 
+
+
+
+```{r datos, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(sysfonts)
+library(readxl)
+library(ggplot2)
+library(tidyr)
+library(plotly)
+
+#library(stringr)
+#library(treemap)
+#library(d3treeR)
+#library(CGPfunctions)
+
+
+url <- "https://ec.europa.eu/eurostat/databrowser-backend/api/query/1.0/LIVE/xlsx/en/download/dc51895b-8e4e-49c0-987c-2bb5fc567483?i"
+
+data <- tempfile()
+download.file(url, data,mode="wb")
+
+p1<-read_excel(path = data, sheet = "Sheet 1", col_types = c("text", 
+                                                             "numeric", "numeric", "numeric", "numeric", "numeric", 
+                                                             "numeric", "numeric", "numeric", "numeric", "numeric", 
+                                                             "numeric", "numeric", "numeric", "numeric", "numeric", 
+                                                             "numeric", "numeric", "numeric", "numeric", "numeric"))
+p1 <- p1[-c(1:6,8,42:44 ) ,]
+nombres1 <-t( p1[,1])
+p1 <- p1[,-1]
+p2 <- as.data.frame(t(p1))
+
+colnames(p2) <- nombres1
+
+```
+
+```{r Fuentes, include=FALSE}
+
+
+font_add_google("BioRhyme", "BioRhyme")
+font_add_google("Montserrat", "Montserrat")
+
+
+# Tema base
+theme_set(theme_bw())
+theme_update(
+  legend.position = "bottom", # posición leyenda
+  # Fuentes y ajustes de la leyenda 
+  legend.text = element_text(size = 9, family = "Montserrat"),
+  legend.title = element_text(face = "bold", size = 11,
+                              family = "Montserrat"),
+  # Fuentes de los textos
+  text = element_text(family = "Montserrat", size = 11, color = "black"),
+  # Fuentes y ajustes de título, subtítulo y caption
+  plot.title = element_text(family = "Montserrat", size = 18,
+                            face = "bold", color = "#ED2D0B"),
+  plot.subtitle = element_text(family = "Montserrat", size = 11,
+                              color = "black"),
+  plot.caption = element_text(size = 9, family = "Montserrat"),
+  # Fuentes y ajustes de los ejes
+  axis.text = element_text(size = 11, color = "grey50",
+                           family = "Montserrat"),
+  axis.title = element_text(size = 11, family = "Montserrat"),
+  axis.ticks = element_blank(), axis.line = element_line(colour = "grey50"),
+  # Ajustes del grid
+  rect = element_blank(),
+  panel.grid = element_line(color = "#b4aea9"),
+  panel.grid.minor = element_blank(),
+  panel.grid.major.x = element_blank(),
+  panel.grid.major.y = element_line(linetype = "dashed"),
+  plot.background = element_rect(fill = "#FFFFFF", color = "#FFFFFF"),
+  # Márgenes
+  plot.margin = # márgenes
+    margin(t = 0.3, b = 0.3, r = 0.7, l = 0.7, "cm"))
+
+
+
+```
+
+```{r grafico, include=FALSE}
+
+p3 <- p2 %>% 
+  pivot_longer (cols = - TIME,
+                names_to = "Geografía",
+                values_to = "Polución")
+
+plot1 <- ggplot (p3, aes(x=TIME, 
+                         y = Polución, 
+                         color = Geografía,
+                         text = paste(Geografía, "\nAño:", TIME, "\n >2.5 µm:", Polución)))+
+  geom_line(group=1)+
+  theme(legend.position = "none")+
+  labs (x = "Año",
+    y= "Contaminantes del aire - PM2.5" )
+
+  
+grafico <-  ggplotly(plot1, height=350, width=600, tooltip = "text")
+
+
+```
+
+```{r grafico2, echo=FALSE}
+
+grafico
+
+```
